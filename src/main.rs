@@ -33,7 +33,7 @@ struct Server {
 
 impl Server {
     fn new(addr: SocketAddr) -> Self {
-        let mut poll = Poll::new().unwrap();
+        let poll = Poll::new().unwrap();
         let mut socket = TcpListener::bind(addr).unwrap();
 
         poll.registry()
@@ -62,6 +62,7 @@ impl Server {
             self.poll.poll(&mut events, None).unwrap();
 
             for event in events.iter() {
+                println!("Got an event!");
                 // Check if the event is for the server or a connection.
                 match event.token() {
                     SERVER => {
@@ -69,6 +70,11 @@ impl Server {
                         // indicates we can accept an connection.
                         let (socket, address) = match self.socket.accept() {
                             Ok(sock) => sock,
+                            // If we get a `WouldBlock` error we know our
+                            // listener has no more incoming connections queued,
+                            // so we can return to polling and wait for some
+                            // more.
+                            Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
                             Err(e) => panic!("ERROR: {}", e.to_string()),
                         };
 
