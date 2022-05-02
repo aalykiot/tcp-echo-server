@@ -25,6 +25,7 @@ impl Connection {
 }
 
 struct Server {
+    unique_token: Token,
     poll: Poll,
     socket: TcpListener,
     connections: HashMap<Token, Connection>,
@@ -40,10 +41,17 @@ impl Server {
             .unwrap();
 
         Server {
+            unique_token: Token(1),
             poll,
             socket,
             connections: HashMap::default(),
         }
+    }
+
+    fn next_token(&mut self) -> Token {
+        let next = self.unique_token.0;
+        self.unique_token.0 += 1;
+        Token(next)
     }
 
     fn accept(&mut self) {
@@ -55,7 +63,29 @@ impl Server {
 
             for event in events.iter() {
                 // Check if the event is for the server or a connection.
-                println!("We got a network I/O event!");
+                match event.token() {
+                    SERVER => {
+                        // Received an event for the TCP server socket, which
+                        // indicates we can accept an connection.
+                        let (socket, address) = match self.socket.accept() {
+                            Ok(sock) => sock,
+                            Err(e) => panic!("ERROR: {}", e.to_string()),
+                        };
+
+                        println!("INFO: Accepted connection from: {}", address);
+
+                        let token = self.next_token();
+                        let mut connection = Connection::new_with_socket(socket);
+
+                        self.poll
+                            .registry()
+                            .register(&mut connection.socket, token, Interest::READABLE)
+                            .unwrap();
+
+                        self.connections.insert(token, connection);
+                    }
+                    _token => {}
+                }
             }
         }
     }
